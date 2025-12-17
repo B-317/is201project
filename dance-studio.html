@@ -1,0 +1,485 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ballet Studio — Sauté, Chaîné (3D), Pirouette In‑Place (3D), Half Turn In-Place (3D) Jeté Split</title>
+<style>
+  :root{
+    --stage-bg: radial-gradient(ellipse at center, #15151b 0%, #0b0b10 55%, #050507 100%);
+    --studio-bg: linear-gradient(180deg,#f5f7fb 0%,#e9eef6 60%,#d6dde9 100%);
+    --library-bg: linear-gradient(180deg,#724d2b 0%, #5c3f22 60%, #452f18 100%);
+    --spotlight: radial-gradient(circle at 50% 20%, rgba(255,255,210,0.35) 0%, rgba(255,255,210,0.08) 35%, rgba(0,0,0,0) 60%);
+    --floor: #2a2a34;
+
+    /* Outfit color variables (bound to controls) */
+    --accent: #ff4d8a;    /* leotard default (pink) */
+    --accent-2: #ffd7e6;  /* tutu default (light pink) */
+
+    /* Hair color */
+    --hair: #3b2a1b;      /* warm brown */
+
+    --duration: 1.0s;     /* JS updates based on speed */
+    --sprite-size: 220px;
+    --shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+    font-family: system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  body{ margin:0; background:#0c0c13; color:#f4f6ff; display:flex; min-height:100vh; flex-direction:column; }
+  header{ padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,0.08); backdrop-filter: blur(4px); }
+  header h1{ margin:0; font-size:1.4rem; }
+  header p{ margin:.35rem 0 0; color:#cbd2ff; font-size:.95rem; }
+
+  .app{ display:grid; grid-template-columns: 340px 1fr; gap:1rem; padding:1rem; flex:1; }
+
+  /* Controls panel */
+  .panel{
+    background: rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:1rem;
+  }
+  .panel h2{ margin:.25rem 0 1rem; font-size:1.1rem; }
+  .group{ margin-bottom:1rem; }
+  .group label{ display:block; font-size:.9rem; margin-bottom:.35rem; color:#e7ebff; }
+  .row{ display:flex; gap:.5rem; flex-wrap:wrap; }
+  button{
+    appearance:none; border:none; border-radius:12px; padding:.6rem .8rem;
+    background:#1f2230; color:#eaf0ff; cursor:pointer; box-shadow: var(--shadow);
+    transition: transform .06s ease, background .2s ease, box-shadow .2s ease;
+  }
+  button:hover{ transform: translateY(-1px); background:#2a2f42; }
+  button:active{ transform: translateY(0); }
+  button.secondary{ background: linear-gradient(180deg,#7ad1ff,#3aa7ff); }
+  .chip{ padding:.4rem .6rem; border-radius:999px; border:1px solid rgba(255,255,255,0.14); }
+
+  input[type="range"]{ width:100%; }
+  select{
+    width:100%; padding:.5rem .6rem; border-radius:10px;
+    background:#1f2230; color:#eaf0ff; border:1px solid rgba(255,255,255,0.14);
+  }
+
+  /* Stage */
+  .stage-wrap{
+    position:relative; border-radius:16px; overflow:hidden;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+  }
+  .stage{
+    position:relative;
+    height: calc(100vh - 220px);
+    min-height: 420px;
+    background: var(--library-bg); /* Default background: Library */
+  }
+  .stage.theme-stage{ background: var(--stage-bg); }
+  .stage.theme-studio{ background: var(--studio-bg); }
+  .stage.theme-library{ background: var(--library-bg); }
+  .stage::before{
+    content:""; position:absolute; inset:0;
+    background: var(--spotlight);
+    pointer-events:none;
+  }
+
+  .floor{
+    position:absolute; left:0; right:0; bottom:0; height:24%;
+    background: linear-gradient(180deg,var(--floor), #1b1b24);
+    box-shadow: inset 0 8px 18px rgba(0,0,0,0.35);
+  }
+
+  /* 3D wrapper for rotateY moves */
+  .sprite3d{
+    position:absolute; bottom:22%; left:12%;
+    width: var(--sprite-size); height: var(--sprite-size);
+    transform-style: preserve-3d;
+    perspective: 800px;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.5));
+    will-change: transform;
+  }
+
+  /* Ballerina SVG inside wrapper */
+  .sprite{
+    width: 100%; height: 100%;
+    transform-origin: 50% 85%;
+  }
+
+  /* Shadow ellipse */
+  .ground-shadow{
+    position:absolute; bottom:22%;
+    left: 12%;
+    transform: translateX(10px);
+    width: calc(var(--sprite-size) * 0.7);
+    height: calc(var(--sprite-size) * 0.18);
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.08) 60%, rgba(0,0,0,0) 70%);
+    border-radius: 50%;
+    filter: blur(2px);
+  }
+
+  /* Move classes — applied to .sprite3d wrapper */
+  .move-saute { animation: saute var(--duration) ease-out; }
+  .move-chaine { animation: chaine3d var(--duration) ease-in-out; }
+  .move-pirouette-inplace { animation: pirouetteInPlace3d var(--duration) ease-in-out; }
+  .move-halfturnInPlace3d { animation: halfturnInPlace3d var(--duration) ease-in-out; }
+  .move-chasse-jete { animation: chasseJete var(--duration) ease-in; }
+
+  /* Jeté leg animation — applied to inner .sprite when it has class .jete */
+  .sprite.jete .leg{
+    transform-box: fill-box;
+    transform-origin: 50% 0%; /* TOP CENTER (hip-like pivot) */
+  }
+  .sprite.jete .leg.left{ animation: jeteSplitLeft var(--duration) ease-in; }
+  .sprite.jete .leg.right{ animation: jeteSplitRight var(--duration) ease-in; }
+  .sprite.jete .foot{ transform-box: fill-box; transform-origin: 50% 50%; animation: jeteFeet var(--duration) ease-in; }
+
+  /* Sauté foot pointing — only when inner sprite has .saute */
+  .sprite.saute .foot{
+    transform-box: fill-box;
+    transform-origin: 50% 10%; /* pivot near ankle */
+    animation: sauteFeet var(--duration) ease-out;
+  }
+
+  /* Keyframes */
+
+  /* Sauté — straight up/down at same X; feet point strongly during airborne */
+  @keyframes saute {
+    0%   { transform: translateX(0) translateY(0) rotate(0deg); }
+    15%  { transform: translateX(0) translateY(-20px) rotate(-4deg); }
+    35%  { transform: translateX(0) translateY(-60px) rotate(0deg); }
+    60%  { transform: translateX(0) translateY(-20px) rotate(3deg); }
+    100% { transform: translateX(0) translateY(0) rotate(0deg); }
+  }
+  @keyframes sauteFeet {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(35deg); }
+    40%  { transform: rotate(88deg); }  /* near-vertical toe point */
+    60%  { transform: rotate(75deg); }
+    80%  { transform: rotate(35deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* Chaîné turns (3D) — horizontal flip while gliding across */
+  @keyframes chaine3d {
+    0%   { transform: translateX(0) translateY(0) rotateY(0deg); }
+    25%  { transform: translateX(80px) translateY(-4px) rotateY(90deg); }
+    50%  { transform: translateX(160px) translateY(0) rotateY(180deg); }
+    75%  { transform: translateX(240px) translateY(-4px) rotateY(270deg); }
+    100% { transform: translateX(320px) translateY(0) rotateY(360deg); }
+  }
+
+  /* Pirouette (in‑place, 3D) — rotate around vertical axis without traveling */
+  @keyframes pirouetteInPlace3d {
+    0%   { transform: translateX(0) translateY(0) rotateY(0deg); }
+    20%  { transform: translateX(0) translateY(-3px) rotateY(90deg); }
+    40%  { transform: translateX(0) translateY(0) rotateY(180deg); }
+    60%  { transform: translateX(0) translateY(-3px) rotateY(270deg); }
+    100% { transform: translateX(0) translateY(0) rotateY(360deg); }
+  }
+
+    /* Half turn in place (3D) — I tried to make a half turn*/
+   @keyframes halfturnInPlace3d {
+    0%   { transform: translateX(0) translateY(0) rotateY(0deg); }
+    25%  { transform: translateX(0) translateY(-3px) rotateY(90deg); }
+    50%  { transform: translateX(0) translateY(0) rotateY(180deg); } /* half turn hold*/
+    75%  { transform: translateX(0) translateY(0px) rotateY(180deg); }
+    100%  { transform: translateX(0) translateY(0) rotateY(180deg); }
+   }
+
+  /* Chassé + Grand Jeté — travel path */
+  @keyframes chasseJete {
+    0%   { transform: translateX(0) translateY(0) rotate(0deg); }
+    25%  { transform: translateX(40px) translateY(0) rotate(0deg); }
+    45%  { transform: translateX(80px) translateY(-80px) rotate(5deg); }
+    65%  { transform: translateX(140px) translateY(-100px) rotate(-2deg); }
+    85%  { transform: translateX(200px) translateY(-50px) rotate(-8deg); }
+    100% { transform: translateX(240px) translateY(0) rotate(0deg); }
+  }
+
+  /* Jeté leg splits — LEFT forward (+), RIGHT backward (-) */
+  @keyframes jeteSplitLeft {
+    0%, 25%   { transform: rotate(0deg); }
+    45%       { transform: rotate(70deg); }
+    60%       { transform: rotate(90deg); }
+    75%       { transform: rotate(60deg); }
+    100%      { transform: rotate(0deg); }
+  }
+  @keyframes jeteSplitRight {
+    0%, 25%   { transform: rotate(0deg); }
+    45%       { transform: rotate(-70deg); }
+    60%       { transform: rotate(-90deg); }
+    75%       { transform: rotate(-60deg); }
+    100%      { transform: rotate(0deg); }
+  }
+  @keyframes jeteFeet {
+    0%, 25%   { transform: rotate(0deg); }
+    45%       { transform: rotate(18deg); }
+    60%       { transform: rotate(65deg); }
+    75%       { transform: rotate(18deg); }
+    100%      { transform: rotate(0deg); }
+  }
+
+  /* HUD */
+  .hud{
+    position:absolute; right:12px; bottom:12px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px; padding:.5rem .7rem;
+    font-size:.9rem;
+  }
+  .hud b{ color:#fff; }
+  .note{ font-size:.85rem; color:#cfd7ff; margin-top:.5rem; }
+
+  /* SVG colors (bound to CSS variables) */
+  .skin { fill: #f5d6c8; }
+  .leotard { fill: var(--accent); }
+  .tutu { fill: var(--accent-2); } /* rounded half-oval skirt */
+  .stroke { stroke: #2c2c36; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Facial + hair styles */
+  .iris { fill: #4aa3ff; }          /* BLUE irises */
+  .pupil { fill: #1f2430; }         /* dark pupils */
+  .glint { fill: #ffffff; opacity: .95; } /* white eye highlight */
+  .hair { fill: var(--hair); }      /* hair color variable */
+</style>
+</head>
+<body>
+  <header>
+    <h1>Ballet Studio — Sauté, Chaîné (3D), Pirouette In‑Place (3D), Half Turn In-Place (3D), Jeté Split</h1>
+    <p>Play moves, adjust speed, and enjoy a stylized demo. Single‑file app.</p>
+  </header>
+
+  <main class="app">
+    <!-- CONTROLS -->
+    <section class="panel" aria-label="Controls">
+      <h2>Controls</h2>
+
+      <div class="group">
+        <label for="theme">Background</label>
+        <select id="theme" aria-label="Pick a background theme">
+          <option value="stage">Stage</option>
+          <option value="studio">Studio</option>
+          <option value="library" selected>Library</option> <!-- Default selection -->
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="outfit">Outfit color</label>
+        <select id="outfit" aria-label="Pick outfit color (leotard + tutu)">
+          <option value="pink" selected>Pink</option>
+          <option value="blue">Blue</option>
+          <option value="purple">Purple</option>
+          <option value="green">Green</option>
+        </select>
+        <p class="note">Changes both the leotard and the tutu together.</p>
+      </div>
+
+      <div class="group">
+        <label for="speed">Speed <span id="speedValue" class="chip">1.0×</span></label>
+        <input id="speed" type="range" min="0.5" max="2.0" step="0.1" value="1.0" />
+      </div>
+
+      <div class="group">
+        <label>Moves (click to play)</label>
+        <div class="row">
+          <button data-move="saute" class="secondary" title="S">Sauté</button>
+          <button data-move="chaine" class="secondary" title="P">Chaîné (3D)</button>
+          <button data-move="pirouette-inplace" class="secondary" title="I">Pirouette (in‑place, 3D)</button>
+          <button data-move="halfturnInPlace3d" class="secondary" title="I">Half Turn (in‑place, 3D)</button>
+          <button data-move="chasse-jete" class="secondary" title="J">Chassé + Grand Jeté</button>
+        </div>
+        <p class="note">Keyboard: S = Sauté, P = Chaîné, I = Pirouette (in‑place), J = Jeté</p>
+      </div>
+
+      <div class="group">
+        <label>About</label>
+        <p class="note">Created with M365 Copilot and customized by Savanna. Single‑file per assignment.</p>
+      </div>
+    </section>
+
+    <!-- STAGE -->
+    <section class="stage-wrap">
+      <!-- Default theme class set to library -->
+      <div id="stage" class="stage theme-library" role="region" aria-label="Dance stage">
+        <!-- Ground shadow -->
+        <div class="ground-shadow" aria-hidden="true"></div>
+
+        <!-- Ballerina sprite (wrapped for 3D) -->
+        <div class="sprite3d">
+          <svg class="sprite" viewBox="0 0 200 220" aria-label="Ballerina">
+            <g id="sprite">
+              <!-- Head -->
+              <circle cx="100" cy="40" r="16" class="skin" />
+
+              <!-- FULL HAIR CAP — lowered to cover forehead up to the old headband line -->
+              <!-- This shape creates a filled cap across the top of the head, with the front edge around y=44 -->
+              <path d="M84,44
+                       A16,16 0 0 1 116,44
+                       L116,26
+                       A16,16 0 0 0 84,26
+                       Z" class="hair" />
+
+              <!-- Hair bun (kept) -->
+              <circle cx="88" cy="28" r="9" class="hair" />
+
+              <!-- Eyes: blue irises + dark pupils + white glint -->
+              <circle cx="94" cy="42" r="3.1" class="iris" />
+              <circle cx="106" cy="42" r="3.1" class="iris" />
+              <circle cx="94" cy="42" r="1.3" class="pupil" />
+              <circle cx="106" cy="42" r="1.3" class="pupil" />
+              <!-- White highlight (placed slightly up-left on each eye) -->
+              <circle cx="93.4" cy="41.3" r="0.8" class="glint" />
+              <circle cx="105.4" cy="41.3" r="0.8" class="glint" />
+
+              <!-- Arms -->
+              <path d="M52,78 Q100,45 148,78" fill="none" class="stroke" />
+              <!-- Torso -->
+              <rect x="92" y="56" width="16" height="48" rx="8" class="leotard" />
+
+              <!-- Legs FIRST so tutu can cover them -->
+              <g class="leg left">
+                <path d="M96,104 L88,168" class="stroke" />
+                <rect class="foot" x="80" y="168" width="22" height="6" rx="3" class="leotard" />
+              </g>
+              <g class="leg right">
+                <path d="M104,104 L112,168" class="stroke" />
+                <rect class="foot" x="110" y="168" width="22" height="6" rx="3" class="leotard" />
+              </g>
+
+              <!-- Rounded half-oval tutu LAST to render on top; sits up at y=104 to meet leotard -->
+              <path d="M60,104
+                       Q100,98 140,104
+                       A40,22 0 0 1 60,104
+                       Z" class="tutu" />
+            </g>
+          </svg>
+        </div>
+
+        <div class="hud" aria-live="polite">Current move: <b id="hudMove">—</b></div>
+        <div class="floor" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const innerSprite = document.querySelector('.sprite');   // the <svg>
+  const wrapper3d = document.querySelector('.sprite3d');   // animated element
+
+  const speedInput = document.getElementById('speed');
+  const speedValue = document.getElementById('speedValue');
+  const hudMove = document.getElementById('hudMove');
+
+  const moves = {
+    'saute':             { cls: 'move-saute', label: 'Sauté', base: 1200 },
+    'chaine':            { cls: 'move-chaine', label: 'Chaîné (3D)', base: 1600 },
+    'pirouette-inplace': { cls: 'move-pirouette-inplace', label: 'Pirouette (in‑place, 3D)', base: 1200 },
+    'halfturnInPlace3d': { cls: 'move-halfturnInPlace3d', label: 'Half Turn (in‑place, 3D)', base: 1200 },
+    'chasse-jete':       { cls: 'move-chasse-jete', label: 'Chassé + Grand Jeté', base: 1800 }
+  };
+
+  // Outfit palettes (leotard + tutu)
+  const outfits = {
+    pink:   { accent: '#ff4d8a', accent2: '#ffd7e6' },      // leotard pink + soft pink tutu
+    blue:   { accent: '#3aa7ff', accent2: '#a8d9ff' },      // leotard blue + light blue tutu
+    purple: { accent: '#8a5cff', accent2: '#d7c4ff' },      // leotard purple + lavender tutu
+    green:  { accent: '#4dffb8', accent2: '#b8ffe6' }       // leotard mint green + pale green tutu
+  };
+
+  // Inverse speed scaling: higher slider => smaller duration => faster
+  function applySpeed(){
+    const s = parseFloat(speedInput.value);
+    speedValue.textContent = s.toFixed(1) + '×';
+    const globalMs = (1000 / s).toFixed(0) + 'ms';
+    document.documentElement.style.setProperty('--duration', globalMs);
+  }
+  applySpeed();
+  speedInput.addEventListener('input', applySpeed);
+
+  // Theme (default already library)
+  const themeSelect = document.getElementById('theme');
+  themeSelect.addEventListener('change', () => {
+    stage.classList.remove('theme-stage','theme-studio','theme-library');
+    stage.classList.add('theme-' + themeSelect.value);
+  });
+
+  // Outfit color control — sets CSS variables for leotard + tutu
+  const outfitSelect = document.getElementById('outfit');
+  function applyOutfit(){
+    const choice = outfits[outfitSelect.value] || outfits.pink;
+    document.documentElement.style.setProperty('--accent', choice.accent);
+    document.documentElement.style.setProperty('--accent-2', choice.accent2);
+  }
+  applyOutfit();
+  outfitSelect.addEventListener('change', applyOutfit);
+
+  // Clear move classes
+  function clearMoveClasses(){
+    wrapper3d.classList.remove('move-saute','move-chaine','move-pirouette-inplace','move-halfturnInPlace3d','move-chasse-jete');
+  }
+
+  // Play a single move
+  async function playMove(key){
+    const m = moves[key];
+    if(!m) return;
+
+    hudMove.textContent = m.label;
+
+    // Reset classes/flags
+    clearMoveClasses();
+    innerSprite.classList.remove('jete','saute');
+
+    // Restart (force reflow)
+    void wrapper3d.offsetWidth;
+
+    // Duration (inverse scaling)
+    const s = parseFloat(speedInput.value);
+    const durationMsNum = Math.max(50, Math.round(m.base / s));
+    wrapper3d.style.setProperty('--duration', durationMsNum + 'ms');
+
+    // Inner sprite flags for leg/foot animations
+    if (key === 'chasse-jete') innerSprite.classList.add('jete');
+    if (key === 'saute') innerSprite.classList.add('saute');
+
+    // Apply animation class and await completion with a fallback timer
+    wrapper3d.classList.add(m.cls);
+    await new Promise((resolve) => {
+      let done = false;
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        clearMoveClasses();
+        innerSprite.classList.remove('jete','saute');
+        hudMove.textContent = '—';
+        wrapper3d.removeEventListener('animationend', onEnd);
+        wrapper3d.removeEventListener('animationcancel', onCancel);
+        clearTimeout(fallbackTimer);
+        resolve();
+      };
+      const onEnd = () => cleanup();
+      const onCancel = () => cleanup();
+      wrapper3d.addEventListener('animationend', onEnd);
+      wrapper3d.addEventListener('animationcancel', onCancel);
+      const fallbackTimer = setTimeout(cleanup, durationMsNum + 80);
+    });
+  }
+
+  // Immediate play buttons
+  document.querySelectorAll('button[data-move]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await playMove(btn.getAttribute('data-move'));
+    });
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', async (e) => {
+    const k = e.key.toLowerCase();
+    if (k === 's') await playMove('saute');
+    if (k === 'p') await playMove('chaine');
+    if (k === 'i') await playMove('pirouette-inplace');
+    if (k === 'h') await playMove('halfturnInPlace3d');
+    if (k === 'j') await playMove('chasse-jete');
+  });
+})();
+</script>
+</body>
+</html>

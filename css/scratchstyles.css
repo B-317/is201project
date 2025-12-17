@@ -1,0 +1,40 @@
+.header{
+    position: top;
+    font-size: larger;
+    align-content: center;
+    color: burlywood;  
+    font-family: 'Courier New', Courier, monospace;
+}
+a{
+    text-decoration: none;
+    color: burlywood;
+    font-size: larger;
+    margin: 20px;
+}
+body {
+    background-image: url("../assets/img/Me arabesque red skirt.jpg");
+    background-position: top;
+    background-size: contain;
+    background-color: blanchedalmond;
+    background-repeat: no-repeat;
+    font-family: candara, sans-serif;
+    color: black;
+    font-weight: bold;
+    margin: 20px;
+    padding: 20px;
+    text-shadow: 0 2px 2px rgba(0,0,0,0.4); /* shadow for better readability */
+}
+.media.align{
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.mainbody{
+    background-color: rgba(255, 255, 255, 0.8); /* semi-transparent white background */
+    padding: 20px;
+    padding-right: 60px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 40px;
+}
